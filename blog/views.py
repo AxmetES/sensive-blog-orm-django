@@ -29,9 +29,6 @@ def serialize_tag(tag):
     }
 
 
-def get_likes_count(post):
-    return post.likes.count()
-
 
 def index(request):
     popular_posts = Post.objects.annotate(popular=Count('likes')).order_by('popular')
