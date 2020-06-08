@@ -38,40 +38,49 @@ def serialize_tag(tag):
     }
 
 
+def serialize_tag_optimized(tag):
+    return {
+        'title': tag.title,
+        'posts_with_tag': tag.posts_count,
+    }
+
+
+#
+# def add_comments_count(posts_query, posts):
+#     posts_ids = [post.id for post in posts]
+#     posts_with_comments = posts_query.filter(id__in=posts_ids).annotate(comments_count=Count('comments'))
+#     ids_and_comments = posts_with_comments.values_list('id', 'comments_count')
+#     count_for_id = dict(ids_and_comments)
+#     for post in posts:
+#         post.comments_count = count_for_id[post.id]
+#
+#     return posts
+
+
 def index(request):
-    posts = Post.objects.select_related('author').prefetch_related('tags', 'comments')
-    popular_posts = posts.annotate(liked_posts=Count('likes', distinct=True)).order_by('liked_posts')
-    most_popular_posts = list(popular_posts)[-5:]
+    posts = Post.objects.relate()
+    popular_posts = posts.get_popular_posts()[:5]
+    most_popular_posts = posts.fetch_comments_count(popular_posts)
 
-    most_popular_posts_ids = [post.id for post in most_popular_posts]
-    posts_with_comments = posts.filter(id__in=most_popular_posts_ids).annotate(comments_count=Count('comments'))
-    ids_and_comments = posts_with_comments.values_list('id', 'comments_count')
-    count_for_id = dict(ids_and_comments)
-    for post in most_popular_posts:
-        post.comments_count = count_for_id[post.id]
+    fresh_posts = posts.order_by('-published_at')[:5]
+    most_fresh_posts = posts.fetch_comments_count(fresh_posts)
 
-    fresh_posts = posts.order_by('published_at')
-    most_fresh_posts = list(fresh_posts)[-5:]
+    most_popular_tags = Tag.objects.prefetch_related('posts').popular()[:5]
 
-    taged_posts = Tag.objects.prefetch_related('posts')
-    tags = taged_posts.annotate(popular_tags=Count('posts')).order_by('popular_tags')
-    most_popular_tags = list(tags)[-5:]
-    for i in most_popular_posts:
-        print(i.comments_count)
     context = {
         'most_popular_posts': [serialize_post_optimized(post) for post in most_popular_posts],
-        'page_posts': [serialize_post(post) for post in most_fresh_posts],
+        'page_posts': [serialize_post_optimized(post) for post in most_fresh_posts],
         'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
     }
     return render(request, 'index.html', context)
 
 
 def post_detail(request, slug):
-    posts = Post.objects.select_related('author').prefetch_related('tags', 'comments')
-
+    posts = Post.objects.relate()
     post = posts.get(slug=slug)
 
-    comments = Comment.objects.filter(post=post)
+    comments_related = Comment.objects.select_related('author', 'post')
+    comments = comments_related.filter(post=post)
     serialized_comments = []
     for comment in comments:
         serialized_comments.append({
@@ -96,11 +105,10 @@ def post_detail(request, slug):
         "tags": [serialize_tag(tag) for tag in related_tags],
     }
 
-    tags = Tag.objects.annotate(popular_tags=Count('posts')).order_by('popular_tags')
-    most_popular_tags = list(tags)[-5:]
+    most_popular_tags = Tag.objects.popular()[:5]
 
-    popular_posts = posts.annotate(liked_posts=Count('likes')).order_by('liked_posts')
-    most_popular_posts = list(popular_posts)[-5:]
+    popular_posts = posts.get_popular_posts()[:5]
+    most_popular_posts = posts.fetch_comments_count(popular_posts)
 
     context = {
         'post': serialized_post,
@@ -111,21 +119,23 @@ def post_detail(request, slug):
 
 
 def tag_filter(request, tag_title):
-    tag = Tag.objects.get(title=tag_title)
+    tags = Tag.objects.popular()
+    most_popular_tags = list(tags)[:5]
 
-    # all_tags = Tag.objects.all()
-    tags = Tag.objects.annotate(popular_tags=Count('posts')).order_by('popular_tags')
-    most_popular_tags = list(tags)[-5:]
+    tag = tags.get(title=tag_title)
 
-    most_popular_posts = []  # TODO. Как это посчитать?
+    posts = Post.objects.relate()
+    popular_posts = posts.get_popular_posts()[:5]
+    most_popular_posts = posts.fetch_comments_count(popular_posts)
 
-    related_posts = tag.posts.all()[:20]
+    related_posts = posts.filter(tags=tag)[:20]
+    related_comments_count_posts = posts.fetch_comments_count(related_posts)
 
     context = {
         "tag": tag.title,
-        'popular_tags': [serialize_tag(tag) for tag in most_popular_tags],
-        "posts": [serialize_post(post) for post in related_posts],
-        'most_popular_posts': [serialize_post(post) for post in most_popular_posts],
+        'popular_tags': [serialize_tag_optimized(tag) for tag in most_popular_tags],
+        "posts": [serialize_post_optimized(post) for post in related_comments_count_posts],
+        'most_popular_posts': [serialize_post_optimized(post) for post in most_popular_posts],
     }
     return render(request, 'posts-list.html', context)
 

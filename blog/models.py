@@ -1,6 +1,33 @@
 from django.db import models
+from django.db.models import Count
 from django.urls import reverse
 from django.contrib.auth.models import User
+
+
+class TagQuerySet(models.QuerySet):
+    def popular(self):
+        tags = self.annotate(posts_count=Count('posts')).order_by('-posts_count')
+        return tags
+
+
+class PostQuerySet(models.QuerySet):
+    def relate(self):
+        posts = self.select_related('author').prefetch_related('tags', 'comments')
+        return posts
+
+    def get_popular_posts(self):
+        posts = self.annotate(liked_posts=Count('likes', distinct=True)).order_by('-liked_posts')
+        return posts
+
+    def fetch_comments_count(self, posts):
+        posts_ids = [post.id for post in posts]
+        posts_with_comments = self.filter(id__in=posts_ids).annotate(comments_count=Count('comments'))
+        ids_and_comments = posts_with_comments.values_list('id', 'comments_count')
+        count_for_id = dict(ids_and_comments)
+        for post in posts:
+            post.comments_count = count_for_id[post.id]
+
+        return posts
 
 
 class Post(models.Model):
@@ -14,6 +41,8 @@ class Post(models.Model):
                                limit_choices_to={'is_staff': True})
     likes = models.ManyToManyField(User, related_name="liked_posts", verbose_name="Кто лайкнул", blank=True)
     tags = models.ManyToManyField("Tag", related_name="posts", verbose_name="Теги")
+
+    objects = PostQuerySet.as_manager()
 
     def __str__(self):
         return self.title
@@ -29,6 +58,8 @@ class Post(models.Model):
 
 class Tag(models.Model):
     title = models.CharField("Тег", max_length=20, unique=True)
+
+    objects = TagQuerySet.as_manager()
 
     def __str__(self):
         return self.title
