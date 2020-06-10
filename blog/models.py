@@ -20,15 +20,15 @@ class PostQuerySet(models.QuerySet):
         posts = self.annotate(liked_posts=Count('likes', distinct=True)).order_by('-liked_posts')
         return posts
 
-    def fetch_comments_count(self, queryset):
-        posts_ids = [post.id for post in queryset]
-        posts_with_comments = self.filter(id__in=posts_ids).annotate(comments_count=Count('comments'))
+    def fetch_comments_count(self):
+        posts_ids = [post.id for post in self]
+        posts_with_comments = Post.objects.filter(id__in=posts_ids).annotate(comments_count=Count('comments'))
         ids_and_comments = posts_with_comments.values_list('id', 'comments_count')
         count_for_id = dict(ids_and_comments)
-        for post in queryset:
+        for post in self:
             post.comments_count = count_for_id[post.id]
 
-        return queryset
+        return self
 
 
 class Post(models.Model):
