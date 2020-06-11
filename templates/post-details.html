@@ -58,7 +58,9 @@
         <div class="col-lg-8">
             <div class="main_blog_details">
                 {% if post.image_url %}
-                <img class="img-fluid" src="{{ post.image_url }}" alt="">
+                  <img class="img-fluid" src="{{ post.image_url }}" alt="post_img">
+                {% else %}
+                  <img class="img-fluid" src="{% static 'img/banner/forest.png' %}" alt="">
                 {% endif %}
                 <h4>{{post.title}}</h4>
                 <div class="user_details">
